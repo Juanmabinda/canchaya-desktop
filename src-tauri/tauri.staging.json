@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CanchaYa POS (Staging)",
+  "identifier": "app.canchalibre.desktop.staging",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "CanchaYa POS (Staging)",
+        "url": "https://staging.canchaya.ar/admin"
+      }
+    ]
+  }
+}

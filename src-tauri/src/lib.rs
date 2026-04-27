@@ -5,7 +5,13 @@ use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-const SERVER_URL: &str = "https://canchaya.ar";
+// SERVER_URL es donde el Rust (no la WebView) postea el grant para canjearlo
+// por el agent_token. Se setea en build via env var CANCHAYA_SERVER_URL.
+// Default: prod. Para staging: `CANCHAYA_SERVER_URL=https://staging.canchaya.ar`.
+const SERVER_URL: &str = match option_env!("CANCHAYA_SERVER_URL") {
+    Some(v) => v,
+    None => "https://canchaya.ar",
+};
 const TOKEN_FILE: &str = "agent_token.txt";
 
 struct AgentState {

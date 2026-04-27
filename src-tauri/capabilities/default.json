@@ -1,14 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permisos minimos. Solo nuestros comandos custom (pair_agent, agent_paired, agent_unpair) son invocables desde canchaya.ar. NO se expone shell ni fs a JS.",
+  "description": "Permisos minimos. Solo nuestros comandos custom (pair_agent, agent_paired, agent_unpair) son invocables desde canchaya.ar / staging.canchaya.ar. NO se expone shell ni fs a JS.",
   "windows": ["main"],
   "remote": {
     "urls": [
       "https://canchaya.ar",
       "https://canchaya.ar/*",
-      "https://staging.canchaya.app",
-      "https://staging.canchaya.app/*"
+      "https://staging.canchaya.ar",
+      "https://staging.canchaya.ar/*"
     ]
   },
   "permissions": [
