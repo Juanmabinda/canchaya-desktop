@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, RunEvent};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -181,18 +182,48 @@ fn agent_unpair(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// Bridge para descargas dentro del wrapper. canchaya.ar ya tiene helpers
+// (downloadCanvasAsImage, shareOrDownloadUrl) que dependen de <a download>
+// y Web Share API; ninguno funciona en WKWebView de Tauri. Aca abrimos un
+// Save dialog nativo y escribimos los bytes que mando JS.
+//
+// Devuelve true si se guardo, false si el user cancelo.
+#[tauri::command]
+async fn save_file_bytes(
+    app: AppHandle,
+    filename: String,
+    bytes: Vec<u8>,
+) -> Result<bool, String> {
+    let dialog = app.dialog().clone();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        dialog.file().set_file_name(&filename).blocking_save_file()
+    })
+    .await
+    .map_err(|e| format!("save dialog: {e}"))?;
+
+    let Some(path) = path else { return Ok(false) };
+    // FilePath puede ser ruta o URI; en desktop siempre tenemos path real.
+    let path_buf = path
+        .into_path()
+        .map_err(|e| format!("path resolve: {e}"))?;
+    std::fs::write(&path_buf, bytes).map_err(|e| format!("write {}: {e}", path_buf.display()))?;
+    Ok(true)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AgentState {
             child: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             pair_agent,
             agent_paired,
-            agent_unpair
+            agent_unpair,
+            save_file_bytes
         ])
         .setup(|app| {
             let _ = spawn_agent_if_token(app.handle());
