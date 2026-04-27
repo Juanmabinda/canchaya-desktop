@@ -157,6 +157,17 @@ fn register_oauth_deep_link(app: AppHandle) {
     let app_for_handler = app.clone();
     app.deep_link().on_open_url(move |event| {
         for url in event.urls() {
+            // Aceptamos canchaya://auth/callback?token=X (prod) y
+            // canchaya-staging://auth/callback?token=X (staging). El esquema
+            // se valida via tauri.conf, pero matcheamos host="auth" + path.
+            // Comparten el mismo handler porque la unica diferencia es el
+            // SERVER_URL y eso ya esta baked en el binario via option_env!.
+            let scheme_ok = url
+                .scheme()
+                .starts_with("canchaya");
+            if !scheme_ok {
+                continue;
+            }
             if url.host_str().map(|h| h == "auth").unwrap_or(false)
                 && url.path().starts_with("/callback")
             {
