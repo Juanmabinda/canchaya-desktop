@@ -1,0 +1,98 @@
+name: Release
+
+# Buildea + firma + publica el wrapper desktop al pushear un tag v*.*.*
+# Por target hace:
+#   1. Checkout de canchaya-print-agent y compila el binario Go
+#      (con CGO en cada plataforma — clave para los drivers USB/fiscal).
+#   2. Drop binario en src-tauri/binaries/ con el naming target-triple.
+#   3. tauri-action buildea, firma con TAURI_SIGNING_PRIVATE_KEY, y sube
+#      .app/.dmg/.msi + .sig + latest.json a un Release draft.
+#
+# Para lanzar la version: pushear tag (`git tag v0.1.1 && git push origin v0.1.1`)
+# y revisar el Release draft en GitHub. Cuando lo publicas, tauri-action
+# Updater de los clientes lo detecta en el proximo boot y se actualiza solo.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            agent_binary_suffix: ''
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            agent_binary_suffix: .exe
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout wrapper
+        uses: actions/checkout@v4
+
+      - name: Checkout agent repo
+        uses: actions/checkout@v4
+        with:
+          repository: Juanmabinda/canchaya-print-agent
+          path: agent
+          token: ${{ secrets.AGENT_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: agent/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build Go agent (CGO)
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        working-directory: agent
+        run: |
+          mkdir -p ../src-tauri/binaries
+          go build -o ../src-tauri/binaries/canchaya-print-${{ matrix.target }}${{ matrix.agent_binary_suffix }} .
+          ls -la ../src-tauri/binaries/
+
+      - name: Install frontend deps
+        run: npm install
+
+      - name: Build + publish via tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'CanchaYa POS ${{ github.ref_name }}'
+          releaseBody: |
+            Release ${{ github.ref_name }}.
+
+            Para usuarios existentes: el wrapper se actualiza solo en el proximo boot.
+            Para nuevas instalaciones: descargar abajo el .dmg (Mac) o .msi (Windows).
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: --target ${{ matrix.target }}

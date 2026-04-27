@@ -11,5 +11,12 @@
         "devtools": true
       }
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Juanmabinda/canchaya-desktop/releases/latest/download/latest-staging.json"
+      ]
+    }
   }
 }

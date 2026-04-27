@@ -84,12 +84,35 @@ Si no hay sesión, el server redirige al sign-in de canchaya.ar.
 
 Generados con `npm run tauri icon <png-1024>` a partir del AppIcon que usa la app de iOS. Genera todas las variantes (PNG, `.icns`, `.ico`, mipmaps Android, AppIcon iOS).
 
+## Releasing
+
+El workflow `.github/workflows/release.yml` se dispara con un tag `v*.*.*`:
+
+```bash
+# 1. Bumpeá la version en src-tauri/tauri.conf.json + package.json
+# 2. Commit
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+El workflow:
+- Hace checkout de `canchaya-print-agent` y compila el binario Go con CGO en cada plataforma (Mac arm64 y Win x64).
+- Buildea Tauri firmando con `TAURI_SIGNING_PRIVATE_KEY` (GitHub Secret).
+- Publica .app/.dmg/.msi + `.sig` + `latest.json` a un Release **draft**.
+- Cuando publicas el Release, los clientes con la app abierta detectan el update en su próximo boot y se actualizan solos via Tauri Updater.
+
+### Backup de la signing key
+
+La keypair Ed25519 vive en `~/.tauri/canchaya-desktop` (privada) y `~/.tauri/canchaya-desktop.pub`. **Si perdés la privada, perdés la capacidad de firmar updates** y todos los clientes existentes se quedan trabados sin poder actualizarse — habría que distribuir un .app nuevo manualmente con una nueva pubkey.
+
+Backupealo en un password manager. Y lo importante: la pubkey en `src-tauri/tauri.conf.json` tiene que matchear la privada — si las cambiás juntas, los clientes nuevos andan pero los viejos no se pueden actualizar (firma no valida).
+
 ## Roadmap
 
-- [x] **Fase 1** — Wrapper WebView básico apuntando a canchaya.ar/admin.
-- [ ] **Fase 2** — Integrar impresión directa (descubrir impresoras del sistema, ESC/POS, WebSocket al server). Sin agente separado.
-- [ ] **Fase 3** — Auto-update (GitHub Releases + Tauri Updater).
-- [ ] **Fase 4** — Installer Windows firmado (NSIS) + DMG Mac notarizado.
+- [x] **Fase 1** — Wrapper WebView + sidecar Go + auto-pair.
+- [x] **Fase 2** — Auto-update (GitHub Actions + Tauri Updater + signed releases).
+- [ ] **Fase 3** — Installer Windows firmado (NSIS code-signing cert ~$200/año o SignPath gratis para OSS) + DMG Mac notarizado (Apple Developer account ya lo tenemos para iOS).
+- [ ] **Fase 4** — Distribución: link en `/admin/printers` para descargar el wrapper.
 
 ## Notas
 

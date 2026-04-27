@@ -4,6 +4,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_updater::UpdaterExt;
 
 // SERVER_URL es donde el Rust (no la WebView) postea el grant para canjearlo
 // por el agent_token. Se setea en build via env var CANCHAYA_SERVER_URL.
@@ -146,6 +147,33 @@ fn agent_paired(app: AppHandle) -> bool {
     read_token(&app).is_some()
 }
 
+// Best-effort: chequea updates al boot y los aplica silenciosamente. Si no
+// hay manifest, falla la red, o el endpoint no existe todavia, lo logueamos
+// y seguimos. La app vieja sigue funcionando — peor caso, no se actualiza.
+fn check_for_updates(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let updater = match app.updater() {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("[updater] init failed: {e}");
+                return;
+            }
+        };
+        match updater.check().await {
+            Ok(Some(update)) => {
+                println!("[updater] update available: {}", update.version);
+                if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+                    eprintln!("[updater] download/install failed: {e}");
+                } else {
+                    println!("[updater] installed; restart will apply it");
+                }
+            }
+            Ok(None) => println!("[updater] up to date"),
+            Err(e) => eprintln!("[updater] check failed: {e}"),
+        }
+    });
+}
+
 #[tauri::command]
 fn agent_unpair(app: AppHandle) -> Result<(), String> {
     kill_agent(&app);
@@ -157,6 +185,7 @@ fn agent_unpair(app: AppHandle) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AgentState {
             child: Mutex::new(None),
         })
@@ -167,6 +196,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let _ = spawn_agent_if_token(app.handle());
+            check_for_updates(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())
