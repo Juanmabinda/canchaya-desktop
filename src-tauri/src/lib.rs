@@ -69,7 +69,11 @@ fn spawn_agent_if_token(app: &AppHandle) -> Result<bool, String> {
         .sidecar("canchaya-print")
         .map_err(|e| format!("sidecar: {e}"))?
         .env("CANCHAYA_AGENT_MANAGED", "1")
-        .env("CANCHAYA_AGENT_TOKEN", &token);
+        .env("CANCHAYA_AGENT_TOKEN", &token)
+        // El sidecar usa CANCHAYA_URL para WS + config endpoint. Lo
+        // matcheamos al SERVER_URL del wrapper para que prod y staging
+        // queden coherentes (token canjeado en staging conecta a staging).
+        .env("CANCHAYA_URL", SERVER_URL);
 
     let (mut rx, child) = sidecar.spawn().map_err(|e| format!("spawn: {e}"))?;
 

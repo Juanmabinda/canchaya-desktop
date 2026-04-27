@@ -7,7 +7,8 @@
       {
         "label": "main",
         "title": "CanchaYa POS (Staging)",
-        "url": "https://staging.canchaya.ar/admin"
+        "url": "https://staging.canchaya.ar/admin",
+        "devtools": true
       }
     ]
   }
