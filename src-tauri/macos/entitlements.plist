@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Necesarios para que el sidecar Go pueda hablarle a las impresoras
+       USB (libusb / IOKit) y Bluetooth (impresoras / lectores de barras
+       BT) bajo App Sandbox. Sin estos entitlements el .app firmado y
+       notarizado falla silenciosamente al intentar abrir el device. -->
+  <key>com.apple.security.device.usb</key>
+  <true/>
+  <key>com.apple.security.device.bluetooth</key>
+  <true/>
+
+  <!-- Networking necesario para el WebView (canchaya.ar) y el sidecar
+       conectandose por LAN (impresoras ESC/POS, fiscales) y al server
+       (WebSocket / API). -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.network.server</key>
+  <true/>
+
+  <!-- El wrapper guarda el agent_token en app_data_dir y necesita escribir
+       ahi. Tambien lectura del binario sidecar embebido. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+
+  <!-- Tauri spawnea el sidecar Go como child process. App Sandbox por
+       default bloquea forks; con Hardened Runtime no es necesario este
+       entitlement, pero si quedaramos bajo App Sandbox seria obligatorio. -->
+  <key>com.apple.security.inherit</key>
+  <true/>
+</dict>
+</plist>
