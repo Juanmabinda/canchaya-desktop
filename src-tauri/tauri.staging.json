@@ -8,6 +8,7 @@
         "label": "main",
         "title": "CanchaYa POS (Staging)",
         "url": "https://staging.canchaya.ar/admin",
+        "userAgent": "Mozilla/5.0 (CanchaYaPOS-Desktop-Staging/0.1.0) Tauri/2",
         "devtools": true
       }
     ]

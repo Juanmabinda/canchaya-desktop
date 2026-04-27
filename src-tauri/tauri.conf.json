@@ -13,6 +13,7 @@
         "label": "main",
         "title": "CanchaYa POS",
         "url": "https://canchaya.ar/admin",
+        "userAgent": "Mozilla/5.0 (CanchaYaPOS-Desktop/0.1.0) Tauri/2",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
