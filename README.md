@@ -84,6 +84,12 @@ Si no hay sesión, el server redirige al sign-in de canchaya.ar.
 
 Generados con `npm run tauri icon <png-1024>` a partir del AppIcon que usa la app de iOS. Genera todas las variantes (PNG, `.icns`, `.ico`, mipmaps Android, AppIcon iOS).
 
+## Code signing
+
+Los binarios de Windows distribuidos en los [GitHub Releases](https://github.com/Juanmabinda/canchaya-desktop/releases) son firmados gratuitamente por la [SignPath Foundation](https://signpath.org/) con un certificado de código emitido por SignPath CA, como parte del programa de soporte a proyectos open source.
+
+Los binarios de macOS son firmados con un certificado Apple Developer ID Application y notarizados a través del servicio de notarización de Apple.
+
 ## Releasing
 
 El workflow `.github/workflows/release.yml` se dispara con un tag `v*.*.*`:
