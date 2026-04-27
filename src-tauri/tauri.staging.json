@@ -18,6 +18,11 @@
       "endpoints": [
         "https://github.com/Juanmabinda/canchaya-desktop/releases/latest/download/latest-staging.json"
       ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["canchaya-staging"]
+      }
     }
   }
 }

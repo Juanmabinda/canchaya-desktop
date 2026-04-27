@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, RunEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -148,6 +150,35 @@ fn agent_paired(app: AppHandle) -> bool {
     read_token(&app).is_some()
 }
 
+// Cuando llega un deep link `canchaya://auth/callback?token=X` (emitido por
+// el server tras OAuth exitoso), navegamos el WebView a /native/auth/session
+// que canjea el token por una sesion Devise (mismo endpoint que iOS nativo).
+fn register_oauth_deep_link(app: AppHandle) {
+    let app_for_handler = app.clone();
+    app.deep_link().on_open_url(move |event| {
+        for url in event.urls() {
+            if url.host_str().map(|h| h == "auth").unwrap_or(false)
+                && url.path().starts_with("/callback")
+            {
+                if let Some((_, token)) = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "token")
+                {
+                    let dest = format!(
+                        "{SERVER_URL}/native/auth/session?token={}",
+                        urlencoding::encode(&token)
+                    );
+                    if let Some(window) = app_for_handler.get_webview_window("main") {
+                        if let Ok(parsed) = dest.parse() {
+                            let _ = window.navigate(parsed);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 // Best-effort: chequea updates al boot y los aplica silenciosamente. Si no
 // hay manifest, falla la red, o el endpoint no existe todavia, lo logueamos
 // y seguimos. La app vieja sigue funcionando — peor caso, no se actualiza.
@@ -188,6 +219,23 @@ fn agent_unpair(app: AppHandle) -> Result<(), String> {
 // Save dialog nativo y escribimos los bytes que mando JS.
 //
 // Devuelve true si se guardo, false si el user cancelo.
+// Abre la URL OAuth del provider en el navegador default del user. Asi
+// Google/Apple ven a Safari/Chrome real (con sesiones, passkeys, password
+// managers) en vez del WKWebView de Tauri donde fallan por anti-embedded
+// browser. La OAuth callback termina en `canchaya://auth/callback?token=X`
+// que vuelve al wrapper via deep-link.
+#[tauri::command]
+async fn open_oauth_in_browser(app: AppHandle, provider: String) -> Result<(), String> {
+    let allowed = ["google_oauth2", "apple"];
+    if !allowed.contains(&provider.as_str()) {
+        return Err(format!("provider invalido: {provider}"));
+    }
+    let url = format!("{SERVER_URL}/users/auth/{provider}?origin=desktop");
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|e| format!("opener: {e}"))
+}
+
 #[tauri::command]
 async fn save_file_bytes(
     app: AppHandle,
@@ -214,8 +262,10 @@ async fn save_file_bytes(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(AgentState {
             child: Mutex::new(None),
         })
@@ -223,11 +273,13 @@ pub fn run() {
             pair_agent,
             agent_paired,
             agent_unpair,
-            save_file_bytes
+            save_file_bytes,
+            open_oauth_in_browser
         ])
         .setup(|app| {
             let _ = spawn_agent_if_token(app.handle());
             check_for_updates(app.handle().clone());
+            register_oauth_deep_link(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

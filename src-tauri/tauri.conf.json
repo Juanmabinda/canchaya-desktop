@@ -48,6 +48,11 @@
         "https://github.com/Juanmabinda/canchaya-desktop/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU4MkY0MzAwM0FEQjhGMkQKUldRdGo5czZBRU12V0pvbzZPejNmL3FnbDIrbVhQbS9RRFo4OUEwdTJEL1gvRXUzWUFsMTV4WVMK"
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["canchaya"]
+      }
     }
   }
 }
