@@ -1,10 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Permisos minimos. Solo nuestros comandos custom (pair_agent, agent_paired, agent_unpair) son invocables desde canchaya.ar. NO se expone shell ni fs a JS.",
   "windows": ["main"],
+  "remote": {
+    "urls": [
+      "https://canchaya.ar",
+      "https://canchaya.ar/*",
+      "https://staging.canchaya.app",
+      "https://staging.canchaya.app/*"
+    ]
+  },
   "permissions": [
-    "core:default",
-    "opener:default"
+    "core:default"
   ]
 }
