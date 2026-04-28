@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Locale del .app: WKWebView usa esto para los date/time pickers
+       nativos (calendario, hora, etc.). Sin esto, los inputs HTML5
+       type="date" muestran "Apr 2026 / Mo Tu We" en ingles aunque la
+       pagina tenga lang="es". -->
+  <key>CFBundleDevelopmentRegion</key>
+  <string>es</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>es</string>
+  </array>
+</dict>
+</plist>
