@@ -107,11 +107,14 @@ El workflow:
 - Publica .app/.dmg/.msi + `.sig` + `latest.json` a un Release **draft**.
 - Cuando publicas el Release, los clientes con la app abierta detectan el update en su próximo boot y se actualizan solos via Tauri Updater.
 
-### Backup de la signing key
+### Backup de secrets
 
-La keypair Ed25519 vive en `~/.tauri/canchaya-desktop` (privada) y `~/.tauri/canchaya-desktop.pub`. **Si perdés la privada, perdés la capacidad de firmar updates** y todos los clientes existentes se quedan trabados sin poder actualizarse — habría que distribuir un .app nuevo manualmente con una nueva pubkey.
+**Inventario completo + procedimiento de backup/restore en [docs/SECRETS.md](docs/SECRETS.md).**
 
-Backupealo en un password manager. Y lo importante: la pubkey en `src-tauri/tauri.conf.json` tiene que matchear la privada — si las cambiás juntas, los clientes nuevos andan pero los viejos no se pueden actualizar (firma no valida).
+Resumen express:
+- Tauri Updater private key: `~/.tauri/canchaya-desktop` — backupear en password manager YA. Si se pierde, los clientes existentes no se actualizan más.
+- Apple Developer cert: pendiente de exportar al cargar los 5 GH secrets.
+- SignPath: pendiente aprobación.
 
 ## Roadmap
 
