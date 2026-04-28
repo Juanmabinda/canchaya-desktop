@@ -16,6 +16,15 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # Permite re-disparar manualmente sin tener que retagear (ej: cuando se
+  # cargan los Apple/SignPath secrets despues del primer tag y queres
+  # re-correr el build con firma).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag a buildear (ej: v0.1.0)'
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -79,12 +88,18 @@ jobs:
         run: npm install
 
       - name: Import Apple Developer cert (Mac)
-        if: matrix.platform == 'macos-latest' && env.APPLE_CERTIFICATE != ''
+        if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          # Si los secrets no estan cargados, skipeamos sin error — el .app
+          # se buildea unsigned (Gatekeeper warning en el primer install).
+          if [[ -z "${APPLE_CERTIFICATE:-}" ]]; then
+            echo "::notice::APPLE_CERTIFICATE no cargado — build saldra sin firmar (Gatekeeper warning en el primer install)"
+            exit 0
+          fi
           # Decodifica el .p12 (base64 en GH secret) y lo importa al keychain
           # temporal para que codesign lo encuentre durante el bundle.
           echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
@@ -126,10 +141,24 @@ jobs:
       # para OSS). Solo corre si los secrets estan cargados — sin ellos el
       # build sigue funcionando pero el cliente ve SmartScreen warning la
       # primera vez. Setup: https://about.signpath.io/documentation/
-      - name: Sign Windows binaries (SignPath)
-        if: matrix.platform == 'windows-latest' && env.SIGNPATH_API_TOKEN != ''
+      - name: Detectar si SignPath secrets estan cargados (Win)
+        # `secrets.X != ''` no se puede usar en `if:` por seguridad, asi
+        # que detectamos en un step previo y exponemos el flag como output.
+        if: matrix.platform == 'windows-latest'
+        id: check_signpath
+        shell: bash
         env:
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if [[ -n "${TOKEN:-}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::SIGNPATH_API_TOKEN no cargado — build saldra sin firmar (SmartScreen warning en el primer install)"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sign Windows binaries (SignPath)
+        if: matrix.platform == 'windows-latest' && steps.check_signpath.outputs.available == 'true'
         uses: signpath/github-action-submit-signing-request@v1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
