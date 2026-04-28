@@ -17,6 +17,7 @@ const SERVER_URL: &str = match option_env!("CANCHAYA_SERVER_URL") {
     None => "https://canchaya.ar",
 };
 const TOKEN_FILE: &str = "agent_token.txt";
+const KIOSK_FILE: &str = "kiosk_mode";
 
 struct AgentState {
     child: Mutex<Option<CommandChild>>,
@@ -56,6 +57,53 @@ fn delete_token(app: &AppHandle) {
     if let Ok(path) = token_path(app) {
         let _ = std::fs::remove_file(path);
     }
+}
+
+// ─── Modo kiosko ────────────────────────────────────────────────
+// Pref persistida en app_data_dir/kiosk_mode (contenido "1" = on).
+// Aplicada al main window en setup. Toggleable desde JS via comando
+// set_kiosk_mode + reabrir la app.
+
+fn kiosk_path(app: &AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_data_dir().ok()?;
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join(KIOSK_FILE))
+}
+
+fn read_kiosk_mode(app: &AppHandle) -> bool {
+    kiosk_path(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim() == "1")
+        .unwrap_or(false)
+}
+
+fn write_kiosk_mode(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    let path = kiosk_path(app).ok_or("no app_data_dir")?;
+    std::fs::write(path, if enabled { "1" } else { "0" })
+        .map_err(|e| format!("write kiosk: {e}"))
+}
+
+fn apply_kiosk_mode_if_set(app: &AppHandle) {
+    if !read_kiosk_mode(app) {
+        return;
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_decorations(false);
+        let _ = window.set_fullscreen(true);
+    }
+}
+
+#[tauri::command]
+fn kiosk_mode_enabled(app: AppHandle) -> bool {
+    read_kiosk_mode(&app)
+}
+
+#[tauri::command]
+fn set_kiosk_mode(app: AppHandle, enabled: bool) -> Result<(), String> {
+    write_kiosk_mode(&app, enabled)
+    // No aplicamos inmediatamente — el set_decorations en runtime no
+    // siempre matchea exit-fullscreen limpio. Pedimos restart de la app
+    // (el JS muestra modal con "Cerrá y volvé a abrir CanchaYa POS").
 }
 
 fn spawn_agent_if_token(app: &AppHandle) -> Result<bool, String> {
@@ -285,9 +333,12 @@ pub fn run() {
             agent_paired,
             agent_unpair,
             save_file_bytes,
-            open_oauth_in_browser
+            open_oauth_in_browser,
+            kiosk_mode_enabled,
+            set_kiosk_mode
         ])
         .setup(|app| {
+            apply_kiosk_mode_if_set(app.handle());
             let _ = spawn_agent_if_token(app.handle());
             check_for_updates(app.handle().clone());
             register_oauth_deep_link(app.handle().clone());

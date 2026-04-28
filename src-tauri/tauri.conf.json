@@ -47,7 +47,9 @@
     },
     "windows": {
       "nsis": {
-        "installerHooks": "windows/installer-hooks.nsi"
+        "installerHooks": "windows/installer-hooks.nsi",
+        "languages": ["Spanish"],
+        "displayLanguageSelector": false
       }
     }
   },
