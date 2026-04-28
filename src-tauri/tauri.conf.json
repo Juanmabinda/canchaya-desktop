@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "CanchaYa POS",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "app.canchalibre.desktop",
   "build": {
     "frontendDist": "../src"
@@ -44,6 +44,11 @@
     "macOS": {
       "entitlements": "macos/entitlements.plist",
       "minimumSystemVersion": "11.0"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/installer-hooks.nsi"
+      }
     }
   },
   "plugins": {
