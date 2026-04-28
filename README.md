@@ -109,12 +109,11 @@ El workflow:
 
 ### Backup de secrets
 
-**Inventario completo + procedimiento de backup/restore en [docs/SECRETS.md](docs/SECRETS.md).**
+La keypair Ed25519 vive en `~/.tauri/canchaya-desktop` (privada) y `~/.tauri/canchaya-desktop.pub`. Si perdés la privada, los clientes existentes no se pueden actualizar más — habría que distribuir un .app nuevo con una pubkey nueva.
 
-Resumen express:
-- Tauri Updater private key: `~/.tauri/canchaya-desktop` — backupear en password manager YA. Si se pierde, los clientes existentes no se actualizan más.
-- Apple Developer cert: pendiente de exportar al cargar los 5 GH secrets.
-- SignPath: pendiente aprobación.
+Backupealo en un password manager. La pubkey en `src-tauri/tauri.conf.json` tiene que matchear la privada.
+
+(El procedimiento operativo completo — Apple Developer cert, SignPath, plan de contingencia, etc. — vive en el repo interno del equipo, no acá.)
 
 ## Roadmap
 
