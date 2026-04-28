@@ -16,7 +16,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/Juanmabinda/canchaya-desktop/releases/latest/download/latest-staging.json"
+        "https://staging.canchaya.ar/desktop/manifest.json"
       ]
     },
     "deep-link": {
