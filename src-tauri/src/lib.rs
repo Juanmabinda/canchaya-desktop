@@ -342,6 +342,23 @@ pub fn run() {
             let _ = spawn_agent_if_token(app.handle());
             check_for_updates(app.handle().clone());
             register_oauth_deep_link(app.handle().clone());
+
+            // Inyectar version del Desktop POS en el WebView en cada navegacion
+            // para que la app Rails pueda mostrarla cerca del logo.
+            // on_page_load corre tanto al cargar la URL inicial como en cualquier
+            // navegacion turbo/anchor — asi siempre esta disponible.
+            let version = app.package_info().version.to_string();
+            if let Some(window) = app.get_webview_window("main") {
+                let v = version.clone();
+                window.on_page_load(move |w, _payload| {
+                    let script = format!(
+                        "window.__CANCHAYA_DESKTOP_VERSION__ = {:?}; document.dispatchEvent(new CustomEvent('canchaya:desktop-version', {{ detail: {:?} }}));",
+                        v, v
+                    );
+                    let _ = w.eval(&script);
+                });
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())
