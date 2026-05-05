@@ -383,13 +383,17 @@ pub fn run() {
             check_for_updates(app.handle().clone());
             register_oauth_deep_link(app.handle().clone());
 
-            // Inyectar version del Desktop POS en el WebView para que la app
-            // Rails pueda mostrarla cerca del logo. Eval one-shot al setup —
-            // la variable global persiste durante navegaciones turbo (no las
-            // recarga el documento). En el peor caso (hard reload) la app
-            // simplemente no muestra la version, sin romper nada.
+            // Inyectar version del Desktop POS:
+            //   1. Window title: "Mi Tienda POS v0.1.11" — visible siempre en
+            //      la barra de la ventana, no se pierde con navegacion ni
+            //      cache. Es como el cliente sabe que version tiene sin
+            //      depender del header del admin.
+            //   2. Variable global JS para que el layout del admin la pueda
+            //      mostrar al lado del logo (legacy, opcional).
             let version = app.package_info().version.to_string();
+            let product_name = app.package_info().name.clone();
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&format!("{} v{}", product_name, version));
                 let script = format!(
                     "window.__CANCHAYA_DESKTOP_VERSION__ = {:?}; if (typeof document !== 'undefined' && document.dispatchEvent) {{ document.dispatchEvent(new CustomEvent('canchaya:desktop-version', {{ detail: {:?} }})); }}",
                     version, version
