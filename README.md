@@ -1,6 +1,18 @@
-# CanchaYa POS (Desktop)
+# CanchaYa POS / Mi Tienda POS (Desktop)
 
-Wrapper de escritorio de [canchaya.ar](https://canchaya.ar/admin) para clubes. Construido con [Tauri](https://tauri.app/) (Rust + WebView nativo).
+Wrapper de escritorio para los productos web de [canchaya.ar](https://canchaya.ar/admin) (clubes) y [mitiendapos.com.ar](https://mitiendapos.com.ar/admin) (comercios). Un solo repo, dos builds — mismo source code, distintos branding/icono/URL.
+
+## Builds
+
+```bash
+npm run build:canchaya  # → CanchaYa POS  (icons/, https://canchaya.ar)
+npm run build:mitienda  # → Mi Tienda POS (icons/mitienda/, https://mitiendapos.com.ar)
+npm run build:both      # ambos
+```
+
+`tauri build` directo (sin script) sigue emitiendo CanchaYa POS — el config base (`tauri.conf.json`) no cambió, los clubes existentes que reconstruyen con el flow viejo siguen recibiendo el mismo binario.
+
+Wrapper construido con [Tauri](https://tauri.app/) (Rust + WebView nativo).
 
 Reemplaza el flujo "abrir Chrome + abrir agente de impresión por separado" por un único `.exe` / `.app` que:
 

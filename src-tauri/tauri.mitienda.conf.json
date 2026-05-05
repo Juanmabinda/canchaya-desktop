@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mi Tienda POS",
+  "identifier": "app.mitiendapos.desktop",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Mi Tienda POS",
+        "url": "https://mitiendapos.com.ar/admin",
+        "userAgent": "Mozilla/5.0 (MiTiendaPOS-Desktop/0.1.0) Tauri/2"
+      }
+    ]
+  },
+  "bundle": {
+    "externalBin": [
+      "binaries/mitienda-print"
+    ],
+    "icon": [
+      "icons/mitienda/32x32.png",
+      "icons/mitienda/128x128.png",
+      "icons/mitienda/128x128@2x.png",
+      "icons/mitienda/icon.icns",
+      "icons/mitienda/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://mitiendapos.com.ar/desktop/manifest.json"
+      ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["mitiendapos"]
+      }
+    }
+  }
+}

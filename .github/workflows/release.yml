@@ -1,24 +1,28 @@
 name: Release
 
-# Buildea + firma + publica el wrapper desktop al pushear un tag v*.*.*
+# Buildea + firma + publica AMBOS brands del wrapper desktop al pushear un
+# tag v*.*.*:
+#   - CanchaYa POS  → release `v{tag}`         (marcado como Latest)
+#   - Mi Tienda POS → release `mitienda-latest` (movible, prerelease para
+#                                                 que no compita con el latest)
+#
 # Por target hace:
 #   1. Checkout de canchaya-print-agent y compila el binario Go
 #      (con CGO en cada plataforma — clave para los drivers USB/fiscal).
+#      Para Mi Tienda inyecta -ldflags con brandName/brandSlug/brandEnvVar
+#      para que el agente embebido apunte a mitiendapos.com.ar.
 #   2. Drop binario en src-tauri/binaries/ con el naming target-triple.
 #   3. tauri-action buildea, firma con TAURI_SIGNING_PRIVATE_KEY, y sube
-#      .app/.dmg/.msi + .sig + latest.json a un Release draft.
+#      .app/.dmg/.msi + .sig + latest.json al release correspondiente.
 #
-# Para lanzar la version: pushear tag (`git tag v0.1.1 && git push origin v0.1.1`)
-# y revisar el Release draft en GitHub. Cuando lo publicas, tauri-action
-# Updater de los clientes lo detecta en el proximo boot y se actualiza solo.
+# Para lanzar la version: `git tag v0.1.11 && git push origin v0.1.11`. El
+# Updater de los clientes detecta el release `latest` (CanchaYa) y `mitienda-latest`
+# (Mi Tienda) en el proximo boot y se actualiza solo.
 
 on:
   push:
     tags:
       - 'v*.*.*'
-  # Permite re-disparar manualmente sin tener que retagear (ej: cuando se
-  # cargan los Apple/SignPath secrets despues del primer tag y queres
-  # re-correr el build con firma).
   workflow_dispatch:
     inputs:
       tag:
@@ -27,19 +31,58 @@ on:
         type: string
 
 jobs:
+  # Pre-cleanup: borra el release `mitienda-latest` previo (si existe) para
+  # que tauri-action lo cree fresh con los assets de esta corrida. Sin esto,
+  # los .dmg/.msi viejos del release anterior quedarian mezclados con los
+  # nuevos. El tag git tambien se borra (--cleanup-tag) y se vuelve a crear
+  # apuntando al commit del nuevo tag v*.
+  cleanup-mitienda:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete mitienda-latest release if exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete mitienda-latest --yes --cleanup-tag 2>/dev/null \
+            || echo "No existing mitienda-latest release — nada que borrar"
+
   publish:
+    needs: cleanup-mitienda
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
+          # ───── CanchaYa POS (release v${tag}, marcado Latest) ─────
           - platform: macos-latest
             target: aarch64-apple-darwin
             agent_binary_suffix: ''
+            brand: canchaya
+            agent_sidecar: canchaya-print
+            tauri_args: '--target aarch64-apple-darwin'
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             agent_binary_suffix: .exe
+            brand: canchaya
+            agent_sidecar: canchaya-print
+            tauri_args: '--target x86_64-pc-windows-msvc'
+          # ───── Mi Tienda POS (release mitienda-latest, prerelease) ─────
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            agent_binary_suffix: ''
+            brand: mitienda
+            agent_sidecar: mitienda-print
+            tauri_args: '--config src-tauri/tauri.mitienda.conf.json --target aarch64-apple-darwin'
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            agent_binary_suffix: .exe
+            brand: mitienda
+            agent_sidecar: mitienda-print
+            tauri_args: '--config src-tauri/tauri.mitienda.conf.json --target x86_64-pc-windows-msvc'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -74,7 +117,8 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Build Go agent (CGO)
+      - name: Build Go agent — CanchaYa
+        if: matrix.brand == 'canchaya'
         shell: bash
         env:
           CGO_ENABLED: '1'
@@ -82,6 +126,25 @@ jobs:
         run: |
           mkdir -p ../src-tauri/binaries
           go build -o ../src-tauri/binaries/canchaya-print-${{ matrix.target }}${{ matrix.agent_binary_suffix }} .
+          ls -la ../src-tauri/binaries/
+
+      - name: Build Go agent — Mi Tienda
+        if: matrix.brand == 'mitienda'
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+        working-directory: agent
+        run: |
+          mkdir -p ../src-tauri/binaries
+          LDFLAGS="-X main.defaultServer=https://mitiendapos.com.ar"
+          LDFLAGS="$LDFLAGS -X 'main.brandName=Mi Tienda'"
+          LDFLAGS="$LDFLAGS -X main.brandSlug=mitienda-print"
+          LDFLAGS="$LDFLAGS -X main.brandEnvVar=MITIENDA_URL"
+          LDFLAGS="$LDFLAGS -X main.brandID=mitienda"
+          LDFLAGS="$LDFLAGS -X main.brandHomepage=https://mitiendapos.com.ar"
+          LDFLAGS="$LDFLAGS -X main.brandTokenEnvVar=MITIENDA_AGENT_TOKEN"
+          LDFLAGS="$LDFLAGS -X main.brandManagedEnvVar=MITIENDA_AGENT_MANAGED"
+          go build -ldflags "$LDFLAGS" -o ../src-tauri/binaries/mitienda-print-${{ matrix.target }}${{ matrix.agent_binary_suffix }} .
           ls -la ../src-tauri/binaries/
 
       - name: Install frontend deps
@@ -100,8 +163,6 @@ jobs:
             echo "::notice::APPLE_CERTIFICATE no cargado — build saldra sin firmar (Gatekeeper warning en el primer install)"
             exit 0
           fi
-          # Decodifica el .p12 (base64 en GH secret) y lo importa al keychain
-          # temporal para que codesign lo encuentre durante el bundle.
           echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
@@ -110,16 +171,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm /tmp/cert.p12
 
-      - name: Build + publish via tauri-action
-        id: tauri_build
+      - name: Build + publish via tauri-action — CanchaYa
+        if: matrix.brand == 'canchaya'
+        id: tauri_build_canchaya
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Mac signing + notarization (cuando estos secrets esten cargados,
-          # tauri-action los usa automaticamente — el .app + .dmg salen
-          # firmados y notarizados, sin warning de Gatekeeper en el cliente).
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -135,15 +194,50 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
-          args: --target ${{ matrix.target }}
+          args: ${{ matrix.tauri_args }}
+
+      - name: Build + publish via tauri-action — Mi Tienda
+        if: matrix.brand == 'mitienda'
+        id: tauri_build_mitienda
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Brand-aware compile-time vars del wrapper Rust (lib.rs los lee
+          # via option_env!). Sin estos, cae a defaults CanchaYa.
+          CANCHAYA_SERVER_URL: https://mitiendapos.com.ar
+          AGENT_SIDECAR: mitienda-print
+          AGENT_TOKEN_ENV: MITIENDA_AGENT_TOKEN
+          AGENT_MANAGED_ENV: MITIENDA_AGENT_MANAGED
+          AGENT_URL_ENV: MITIENDA_URL
+          DEEP_LINK_PREFIX: mitiendapos
+        with:
+          # Tag movible — el cleanup-mitienda ya lo borro antes de este job.
+          tagName: mitienda-latest
+          releaseName: 'Mi Tienda POS ${{ github.ref_name }}'
+          releaseBody: |
+            Mi Tienda POS ${{ github.ref_name }}.
+
+            Para usuarios existentes: el wrapper se actualiza solo en el proximo boot.
+            Para nuevas instalaciones: descargar abajo el .dmg (Mac) o .msi (Windows).
+          # prerelease=true previene que GitHub marque este release como
+          # "Latest" (esa marca queda para el de CanchaYa). Funcionalmente es
+          # un release publicado normal — el tag mitienda-latest lo expone.
+          releaseDraft: false
+          prerelease: true
+          includeUpdaterJson: true
+          args: ${{ matrix.tauri_args }}
 
       # Code signing del .exe/.msi de Windows via SignPath Foundation (gratis
       # para OSS). Solo corre si los secrets estan cargados — sin ellos el
       # build sigue funcionando pero el cliente ve SmartScreen warning la
       # primera vez. Setup: https://about.signpath.io/documentation/
       - name: Detectar si SignPath secrets estan cargados (Win)
-        # `secrets.X != ''` no se puede usar en `if:` por seguridad, asi
-        # que detectamos en un step previo y exponemos el flag como output.
         if: matrix.platform == 'windows-latest'
         id: check_signpath
         shell: bash
@@ -166,5 +260,5 @@ jobs:
           project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
           signing-policy-slug: ${{ secrets.SIGNPATH_POLICY_SLUG }}
           artifact-configuration-slug: tauri-windows-installer
-          github-artifact-id: ${{ steps.tauri_build.outputs.releaseId }}
+          github-artifact-id: ${{ matrix.brand == 'canchaya' && steps.tauri_build_canchaya.outputs.releaseId || steps.tauri_build_mitienda.outputs.releaseId }}
           wait-for-completion: true

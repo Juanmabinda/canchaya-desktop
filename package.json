@@ -1,10 +1,15 @@
 {
   "name": "canchaya-desktop",
   "private": true,
-  "version": "0.1.10",
+  "version": "0.1.11",
   "type": "module",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:canchaya": "tauri build",
+    "build:mitienda": "tauri build --config src-tauri/tauri.mitienda.conf.json",
+    "build:both": "npm run build:canchaya && npm run build:mitienda",
+    "dev:canchaya": "tauri dev",
+    "dev:mitienda": "tauri dev --config src-tauri/tauri.mitienda.conf.json"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

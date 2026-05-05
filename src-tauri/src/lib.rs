@@ -9,12 +9,50 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 
-// SERVER_URL es donde el Rust (no la WebView) postea el grant para canjearlo
-// por el agent_token. Se setea en build via env var CANCHAYA_SERVER_URL.
-// Default: prod. Para staging: `CANCHAYA_SERVER_URL=https://staging.canchaya.ar`.
+// ─── Brand-aware compile-time vars (defaults: CanchaYa) ─────────────
+// Inyectables via env vars en build. Sin override, el wrapper se comporta
+// idéntico al de hoy (CanchaYa POS, retrocompat total para los clubes
+// existentes). Para construir Mi Tienda POS:
+//
+//   CANCHAYA_SERVER_URL=https://mitiendapos.com.ar \
+//   AGENT_SIDECAR=mitienda-print \
+//   AGENT_TOKEN_ENV=MITIENDA_AGENT_TOKEN \
+//   AGENT_MANAGED_ENV=MITIENDA_AGENT_MANAGED \
+//   AGENT_URL_ENV=MITIENDA_URL \
+//   DEEP_LINK_PREFIX=mitiendapos \
+//     cargo tauri build --config src-tauri/tauri.mitienda.conf.json
+//
+// SERVER_URL: donde el Rust (no la WebView) postea el grant para canjearlo
+// por el agent_token. Para staging: `CANCHAYA_SERVER_URL=https://staging.canchaya.ar`.
 const SERVER_URL: &str = match option_env!("CANCHAYA_SERVER_URL") {
     Some(v) => v,
     None => "https://canchaya.ar",
+};
+// Nombre del binario sidecar en src-tauri/binaries/<name>-<target>{.exe}
+const AGENT_SIDECAR: &str = match option_env!("AGENT_SIDECAR") {
+    Some(v) => v,
+    None => "canchaya-print",
+};
+// Env vars que el wrapper le pasa al agente Go (debe matchear lo que el
+// agente lee internamente — ver brandTokenEnvVar/brandManagedEnvVar/brandEnvVar
+// en canchaya-print-agent/main.go).
+const AGENT_TOKEN_ENV: &str = match option_env!("AGENT_TOKEN_ENV") {
+    Some(v) => v,
+    None => "CANCHAYA_AGENT_TOKEN",
+};
+const AGENT_MANAGED_ENV: &str = match option_env!("AGENT_MANAGED_ENV") {
+    Some(v) => v,
+    None => "CANCHAYA_AGENT_MANAGED",
+};
+const AGENT_URL_ENV: &str = match option_env!("AGENT_URL_ENV") {
+    Some(v) => v,
+    None => "CANCHAYA_URL",
+};
+// Esquema del deep-link OAuth (canchaya:// o mitiendapos://). Aceptamos
+// también el sufijo "-staging" para distinguir builds de staging.
+const DEEP_LINK_PREFIX: &str = match option_env!("DEEP_LINK_PREFIX") {
+    Some(v) => v,
+    None => "canchaya",
 };
 const TOKEN_FILE: &str = "agent_token.txt";
 const KIOSK_FILE: &str = "kiosk_mode";
@@ -118,14 +156,15 @@ fn spawn_agent_if_token(app: &AppHandle) -> Result<bool, String> {
 
     let sidecar = app
         .shell()
-        .sidecar("canchaya-print")
+        .sidecar(AGENT_SIDECAR)
         .map_err(|e| format!("sidecar: {e}"))?
-        .env("CANCHAYA_AGENT_MANAGED", "1")
-        .env("CANCHAYA_AGENT_TOKEN", &token)
-        // El sidecar usa CANCHAYA_URL para WS + config endpoint. Lo
-        // matcheamos al SERVER_URL del wrapper para que prod y staging
-        // queden coherentes (token canjeado en staging conecta a staging).
-        .env("CANCHAYA_URL", SERVER_URL);
+        .env(AGENT_MANAGED_ENV, "1")
+        .env(AGENT_TOKEN_ENV, &token)
+        // El sidecar usa AGENT_URL_ENV (CANCHAYA_URL / MITIENDA_URL) para WS +
+        // config endpoint. Lo matcheamos al SERVER_URL del wrapper para que
+        // prod y staging queden coherentes (token canjeado en staging conecta
+        // a staging).
+        .env(AGENT_URL_ENV, SERVER_URL);
 
     let (mut rx, child) = sidecar.spawn().map_err(|e| format!("spawn: {e}"))?;
 
@@ -198,21 +237,22 @@ fn agent_paired(app: AppHandle) -> bool {
     read_token(&app).is_some()
 }
 
-// Cuando llega un deep link `canchaya://auth/callback?token=X` (emitido por
+// Cuando llega un deep link `<scheme>://auth/callback?token=X` (emitido por
 // el server tras OAuth exitoso), navegamos el WebView a /native/auth/session
 // que canjea el token por una sesion Devise (mismo endpoint que iOS nativo).
+// El scheme depende del brand (canchaya:// para CanchaYa, mitiendapos:// para
+// Mi Tienda) — viene de DEEP_LINK_PREFIX seteado en build.
 fn register_oauth_deep_link(app: AppHandle) {
     let app_for_handler = app.clone();
     app.deep_link().on_open_url(move |event| {
         for url in event.urls() {
-            // Aceptamos canchaya://auth/callback?token=X (prod) y
-            // canchaya-staging://auth/callback?token=X (staging). El esquema
+            // Aceptamos <prefix>://... y <prefix>-staging://... El esquema
             // se valida via tauri.conf, pero matcheamos host="auth" + path.
             // Comparten el mismo handler porque la unica diferencia es el
             // SERVER_URL y eso ya esta baked en el binario via option_env!.
             let scheme_ok = url
                 .scheme()
-                .starts_with("canchaya");
+                .starts_with(DEEP_LINK_PREFIX);
             if !scheme_ok {
                 continue;
             }
@@ -343,20 +383,18 @@ pub fn run() {
             check_for_updates(app.handle().clone());
             register_oauth_deep_link(app.handle().clone());
 
-            // Inyectar version del Desktop POS en el WebView en cada navegacion
-            // para que la app Rails pueda mostrarla cerca del logo.
-            // on_page_load corre tanto al cargar la URL inicial como en cualquier
-            // navegacion turbo/anchor — asi siempre esta disponible.
+            // Inyectar version del Desktop POS en el WebView para que la app
+            // Rails pueda mostrarla cerca del logo. Eval one-shot al setup —
+            // la variable global persiste durante navegaciones turbo (no las
+            // recarga el documento). En el peor caso (hard reload) la app
+            // simplemente no muestra la version, sin romper nada.
             let version = app.package_info().version.to_string();
             if let Some(window) = app.get_webview_window("main") {
-                let v = version.clone();
-                window.on_page_load(move |w, _payload| {
-                    let script = format!(
-                        "window.__CANCHAYA_DESKTOP_VERSION__ = {:?}; document.dispatchEvent(new CustomEvent('canchaya:desktop-version', {{ detail: {:?} }}));",
-                        v, v
-                    );
-                    let _ = w.eval(&script);
-                });
+                let script = format!(
+                    "window.__CANCHAYA_DESKTOP_VERSION__ = {:?}; if (typeof document !== 'undefined' && document.dispatchEvent) {{ document.dispatchEvent(new CustomEvent('canchaya:desktop-version', {{ detail: {:?} }})); }}",
+                    version, version
+                );
+                let _ = window.eval(&script);
             }
 
             Ok(())
